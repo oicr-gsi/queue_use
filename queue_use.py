@@ -14,7 +14,7 @@ def main(queue):
 	if DEBUG:
 		print "Parsing qstat.xml file (using file in cwd)"
 	else:
-		os.system(" ".join("qstat","-u \*","-q", queue, "-j \*","-xml", ">qstat.xml"))
+		os.system(" ".join(["qstat","-u \*","-q", queue, "-j \*","-xml", ">qstat.xml"]))
 	qstat=parse_qstat()
 
 
@@ -28,28 +28,38 @@ def main(queue):
 	machine_size={}
 	total_hvmem=0
 	total_memtotal=0
-	import pprint;
+	total_maxvmem=0
 	for host in qh.getroot():
 		for q in host.iter('queue'):
 			if q.attrib['name'] == queue:
 				row=collect_stats(host, qstat)
 				hvmem=row['h_vmem']
 				memtotal=row['mem_total']
-				slots=memtotal
+				maxvmem=row['maxvmem']
 				total_hvmem+=hvmem
 				total_memtotal+=memtotal
-				if not slots in machine_size:
-					machine_size[slots]={'h_vmem':0, 'mem_total':0}
-				machine_size[slots]['h_vmem']+=hvmem
-				machine_size[slots]['mem_total']+=memtotal
-
+				total_maxvmem+=maxvmem
+				if not memtotal in machine_size:
+					machine_size[memtotal]={'h_vmem':0, 'mem_total':0, 'maxvmem':0}
+				machine_size[memtotal]['h_vmem']+=hvmem
+				machine_size[memtotal]['mem_total']+=memtotal
+				machine_size[memtotal]['maxvmem']+=maxvmem
 				table.append(row)
+
 	print queue
-	print "Total usage\t%f%%\t%d/%d G" % ((100.0*total_hvmem/total_memtotal),get_gigs(total_hvmem),get_gigs(total_memtotal))
+	print "Node Size (G)\tBusy-ness (%)\tRequested (G)\tTotal (G)\tUsed (G)\tEfficiency (%)"
 	for size in machine_size:
 		sizerow=machine_size[size]
-		print "%sG usage\t%f%%\t%d/%d G" % (get_gigs(size),(100.0*sizerow['h_vmem']/sizerow['mem_total']),get_gigs(sizerow['h_vmem']), get_gigs(sizerow['mem_total']))
+		print "%s\t%.2f\t%.2f\t%.2f\t%.2f" % ( get_gigs(size),(100.0*safe_div(sizerow['h_vmem'],sizerow['mem_total'])),get_gigs(sizerow['h_vmem']), get_gigs(sizerow['mem_total']), (100.0*safe_div(sizerow['maxvmem'], sizerow['h_vmem'])) )
 
+	print "Total\t%.2f\t%.2f\t%.2f\t%.2f" % ( (100.0*safe_div(total_hvmem,total_memtotal)),get_gigs(total_hvmem),get_gigs(total_memtotal),(100.0*safe_div(total_maxvmem,total_hvmem)) )
+
+
+def safe_div(num, denom):
+	if denom != 0:
+		return num/denom
+	else:
+		return 0
 
 def parse_qstat():
 	# detailed_job_info
@@ -156,12 +166,9 @@ def collect_stats(ele, qstat):
 	qhost_use=0
 	qstat_use=0
 	slots_use=0
-	if row['slots']!=0:
-		row['slots_use']=float(row['slots_used'])/float(row['slots'])
-	if row['h_vmem']!=0:
-		row['qhost_use']=float(row['maxvmem'])/float(row['h_vmem'])
-	if row['mem_total']!=0:
-		row['qstat_use']=float(row['mem_used'])/float(row['mem_total'])
+	row['slots_use']=safe_div(float(row['slots_used']), float(row['slots']))
+	row['qhost_use']=safe_div(float(row['maxvmem']), float(row['h_vmem']))
+	row['qstat_use']=safe_div(float(row['mem_used']), float(row['mem_total']))
 	return row
 
 import sys
