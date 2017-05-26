@@ -11,13 +11,7 @@ DEBUG=0
 # how hoggy our processes are being (requested vs actual)
 
 def main(queue):
-	if DEBUG:
-		print "Parsing qstat.xml file (using file in cwd)"
-	else:
-		os.system(" ".join(["qstat","-u \*","-q", queue, "-j \*","-xml", ">qstat.xml"]))
 	qstat=parse_qstat()
-
-
 	if DEBUG:
 		print "Loading qhosts.xml file (using file in cwd)"
 	else:
@@ -56,42 +50,37 @@ def main(queue):
 
 
 def safe_div(num, denom):
+# Because I'm too lazy to check for a 0 denominator every time I divide
 	if denom != 0:
 		return num/denom
 	else:
 		return 0
 
 def parse_qstat():
-	# detailed_job_info
-	#	> djob_info
-	#		> element
-	#			> JB_job_number <text>
-	#			> JB_hard_resource_list
-	#				> qstat_l_requests
-	#					> CE_name <text, e.g. h_vmem>
-	#					> CE_stringval <text, e.g. 6G>
-	#					> CE_doubleval <text, e.g. 6442450944.00000>
-	#			> JB_ja_tasks
-	#				> ulong_sublist
-	#					> JAT_scaled_usage_list
-	#						> scaled
-	#							> UA_name <text, e.g. maxvmem>
-	#							> UA_value <text>
-	# BLARG
+# Parsing the qstat XML log because I don't want to have to iterate
+# through the file for every job mentioned in the qhost file.
+# Returns: a dict with job ID keys. Each value holds another dict with the
+# 	keys: 'h_vmem' and 'maxvmem', for requested and used memory
+#	respectively
+	if DEBUG:
+		print "Parsing qstat.xml file (using file in cwd)"
+	else:
+		os.system(" ".join(["qstat","-u \*","-q", queue, "-j \*","-xml", ">qstat.xml"]))
 	qs = ET.parse('qstat.xml')
 	qstat = {}
-	djobvalues=['']
 	for element in qs.getroot().iter('element'):
 		jobstat={}
+		# record the job ID, if it exists. If not, skip it
 		key=element.find('JB_job_number')
 		if key is None:
 			continue
 		jid=key.text
+		# record the requested memory (h_vmem)
 		for qreq in element.iter('qstat_l_requests'):
 			key=qreq.find('CE_name')
 			if key.text == 'h_vmem':
 				jobstat[key.text]=qreq.find('CE_doubleval').text
-		# pull out current usage
+		# record current maximum usage (maxvmem)
 		for scaled in element.iter('scaled'):
 			key=scaled.find('UA_name')
 			if key.text == 'maxvmem' or key.text == 'io':
@@ -99,13 +88,8 @@ def parse_qstat():
 		qstat[jid]=jobstat
 	return qstat
 
-
-
-
-
-
-
 def convert_mem(string):
+# Convert strings like 10G and 200M to bytes. Also converts "-" to 0.
 	num=0.0
 	if 'G' in string:
 		fixed_str=string.replace("G","")
@@ -119,21 +103,16 @@ def convert_mem(string):
 	return string
 
 def get_gigs(string):
+# Also too lazy to remember what to divide by to convert bytes back into gigs
 	return float(string)/10**11
 
 def collect_stats(ele, qstat):
-	# qhost 
-	#	> host name
-	# 		> hostvalue name
-	#		> resourcevalue name dominance (optional from -F)
-	#		> queue name (optional from -q)
-	#			> queuevalue qname name
-	#		> job name (optional from -j)
-	#			> jobvalue jobid name
-	
-	#Things to pull out
+# for a node in the queue that matches the requested queue, pull out interesting things	
+# also cross-reference the jobs that we pulled out of qstat in that handy dict we made
+# to come up with total requested, used, and available resources on a particular node
+# for this queue
+# Returns: a dict with the keys:host, mem_used, mem_total, num_proc, load_avg, h_vmem, and maxvmem
 	hostvalues=['mem_used', 'mem_total', 'num_proc', 'load_avg']
-	queuevalues=['slots_used', 'slots']
 	jobvalues=[]
 
 	row={}
@@ -142,12 +121,6 @@ def collect_stats(ele, qstat):
 	for hostvalue in ele.iter('hostvalue'):
 		if hostvalue.attrib['name'] in hostvalues:
 			row[hostvalue.attrib['name']]=convert_mem(hostvalue.text)
-	# probably better exist
-	for queue in ele.findall('queue'):
-		if queue.attrib['name']=="production":
-			for qv in queue.iter('queuevalue'):
-				if qv.attrib['name'] in queuevalues:
-					row[qv.attrib['name']]=qv.text
 	req=0.0
 	used=0.0
 	for job in ele.findall('job'):
@@ -165,12 +138,13 @@ def collect_stats(ele, qstat):
 	row['maxvmem']=used
 	qhost_use=0
 	qstat_use=0
-	slots_use=0
-	row['slots_use']=safe_div(float(row['slots_used']), float(row['slots']))
 	row['qhost_use']=safe_div(float(row['maxvmem']), float(row['h_vmem']))
 	row['qstat_use']=safe_div(float(row['mem_used']), float(row['mem_total']))
 	return row
 
+
+
+# Parse the args and call main
 import sys
 import argparse
 parser = argparse.ArgumentParser(description='Calculate current queue usage')
