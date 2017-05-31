@@ -65,7 +65,7 @@ def parse_qstat():
 	if DEBUG:
 		print "Parsing qstat.xml file (using file in cwd)"
 	else:
-		os.system(" ".join(["qstat","-u \*","-q", queue, "-j \*","-xml", ">qstat.xml"]))
+		os.system(" ".join(["qstat","-u \*","-j \*","-xml", ">qstat.xml"]))
 	qs = ET.parse('qstat.xml')
 	qstat = {}
 	for element in qs.getroot().iter('element'):
