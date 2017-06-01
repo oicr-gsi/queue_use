@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-
-import xml.etree.ElementTree as ET
+try:
+	import xml.etree.cElementTree as ET
+except ImportError:
+	import xml.etree.ElementTree as ET
 import os
 
 DEBUG=0
@@ -10,12 +12,13 @@ DEBUG=0
 # How busy particular machine sizes are (16G, 24G, 125.1, 252.3, 220.8)
 # how hoggy our processes are being (requested vs actual)
 
-def main(queue):
+def main(queue, pretty):
 	qstat=parse_qstat()
 	if DEBUG:
 		print "Loading qhosts.xml file (using file in cwd)"
 	else:
 		os.system(" ".join(["qhost","-xml","-q","-j","-F",">qhosts.xml"]))
+
 	qh = ET.parse('qhosts.xml')
 
 	table=[]
@@ -39,14 +42,27 @@ def main(queue):
 				machine_size[memtotal]['mem_total']+=memtotal
 				machine_size[memtotal]['maxvmem']+=maxvmem
 				table.append(row)
+	if pretty:
+		pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem)
 
-	print queue
-	print "Node Size (G)\tBusy-ness (%)\tRequested (G)\tTotal (G)\tUsed (G)\tEfficiency (%)"
-	for size in machine_size:
-		sizerow=machine_size[size]
-		print "%s\t%.2f\t%.2f\t%.2f\t%.2f" % ( get_gigs(size),(100.0*safe_div(sizerow['h_vmem'],sizerow['mem_total'])),get_gigs(sizerow['h_vmem']), get_gigs(sizerow['mem_total']), (100.0*safe_div(sizerow['maxvmem'], sizerow['h_vmem'])) )
 
-	print "Total\t%.2f\t%.2f\t%.2f\t%.2f" % ( (100.0*safe_div(total_hvmem,total_memtotal)),get_gigs(total_hvmem),get_gigs(total_memtotal),(100.0*safe_div(total_maxvmem,total_hvmem)) )
+
+def pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem):
+        print "{0:<20s}{1:<20s}{2:<20s}{3:<20s}{4:<20s}{5:<20s}".format("Node Size (G)","Busy-ness (%)","Requested (G)","Total (G)","Used (G)","Efficiency (%)")
+        for size in machine_size:
+                sizerow=machine_size[size]
+                nodesize=str(get_gigs(size))
+                busyness=(100.0*safe_div(sizerow['h_vmem'],sizerow['mem_total']))
+                requestedg=get_gigs(sizerow['h_vmem'])
+                totalg=get_gigs(sizerow['mem_total'])
+                usedg=get_gigs(sizerow['maxvmem'])
+                efficiency=(100*safe_div(usedg,requestedg))
+                print "{0:<20s}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:<20.2f}{5:<20.2f}".format(nodesize,busyness,requestedg,totalg,usedg,efficiency)
+
+        total_busyness=(100.0*safe_div(total_hvmem,total_memtotal))
+        total_efficiency=(100.0*safe_div(total_maxvmem,total_hvmem))
+        print "{5:<20s}{0:<20.2f}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:20.2f}".format(total_busyness,get_gigs(total_hvmem),get_gigs(total_memtotal),get_gigs(total_maxvmem),total_efficiency,"Total")
+
 
 
 def safe_div(num, denom):
@@ -150,6 +166,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Calculate current queue usage')
 parser.add_argument('queue', help='the queue to calculate for', default='production')
 parser.add_argument('--debug', action='store_true')
+parser.add_argument('--pretty', action='store_true', help='print human-friendly table')
 args=parser.parse_args()
 DEBUG=args.debug
-main(args.queue)
+main(args.queue, args.pretty)
