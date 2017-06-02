@@ -4,7 +4,6 @@ try:
 except ImportError:
 	import xml.etree.ElementTree as ET
 import os
-
 DEBUG=0
 
 # What do I want?
@@ -12,39 +11,54 @@ DEBUG=0
 # How busy particular machine sizes are (16G, 24G, 125.1, 252.3, 220.8)
 # how hoggy our processes are being (requested vs actual)
 
-def main(queue, pretty):
-	qstat=parse_qstat()
-	if DEBUG:
-		print "Loading qhosts.xml file (using file in cwd)"
-	else:
-		os.system(" ".join(["qhost","-xml","-q","-j","-F",">qhosts.xml"]))
+def main(queue, pretty, prometheus):
+    qstat=parse_qstat()
+    if DEBUG:
+        print "Loading qhosts.xml file (using file in cwd)"
+    else:
+        os.system(" ".join(["qhost","-xml","-q","-j","-F",">qhosts.xml"]))
+    qh = ET.parse("qhosts.xml")
+    table=[]
+    machine_size={}
+    total_hvmem=0
+    total_memtotal=0
+    total_maxvmem=0
+    for host in qh.getroot():
+        for q in host.iter('queue'):
+            if q.attrib['name'] == queue:
+                row=collect_stats(host, qstat)
+                hvmem=row['h_vmem']
+                memtotal=row['mem_total']
+                maxvmem=row['maxvmem']
+                total_hvmem+=hvmem
+                total_memtotal+=memtotal
+                total_maxvmem+=maxvmem
+                if not memtotal in machine_size:
+                    machine_size[memtotal]={'h_vmem':0, 'mem_total':0, 'maxvmem':0}
+                machine_size[memtotal]['h_vmem']+=hvmem
+                machine_size[memtotal]['mem_total']+=memtotal
+                machine_size[memtotal]['maxvmem']+=maxvmem
+                table.append(row)
+    if pretty:
+        pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem)
+    if prometheus is not None:
+        send_to_prometheus(queue,machine_size,prometheus)
 
-	qh = ET.parse('qhosts.xml')
+def send_to_prometheus(queue,machine_size,prometheus):
+    from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+    registry = CollectorRegistry()
+    g_maxvmem = Gauge('sgequeue_maxvmem', 'The current maximum virtual memory (bytes) used on the given queue', ['nodesize'], registry=registry)
+    g_hvmem = Gauge('sgequeue_hvmem', 'The current requested virtual memory (bytes) used on the given queue', ['nodesize'], registry=registry)
+    g_memtotal = Gauge('sgequeue_memtotal', 'The current maximum virtual memory (bytes) available on the given queue', ['nodesize'], registry=registry)
+   
+    for size in machine_size:
+        sizerow=machine_size[size]
+        nodesize=str(get_gigs(size))
+        g_maxvmem.labels(nodesize).set(sizerow['maxvmem'])
+        g_hvmem.labels(nodesize).set(sizerow['h_vmem'])
+        g_memtotal.labels(nodesize).set(sizerow['mem_total'])
 
-	table=[]
-	machine_size={}
-	total_hvmem=0
-	total_memtotal=0
-	total_maxvmem=0
-	for host in qh.getroot():
-		for q in host.iter('queue'):
-			if q.attrib['name'] == queue:
-				row=collect_stats(host, qstat)
-				hvmem=row['h_vmem']
-				memtotal=row['mem_total']
-				maxvmem=row['maxvmem']
-				total_hvmem+=hvmem
-				total_memtotal+=memtotal
-				total_maxvmem+=maxvmem
-				if not memtotal in machine_size:
-					machine_size[memtotal]={'h_vmem':0, 'mem_total':0, 'maxvmem':0}
-				machine_size[memtotal]['h_vmem']+=hvmem
-				machine_size[memtotal]['mem_total']+=memtotal
-				machine_size[memtotal]['maxvmem']+=maxvmem
-				table.append(row)
-	if pretty:
-		pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem)
-
+    push_to_gateway(prometheus, job=queue, registry=registry)
 
 
 def pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem):
@@ -167,6 +181,7 @@ parser = argparse.ArgumentParser(description='Calculate current queue usage')
 parser.add_argument('queue', help='the queue to calculate for', default='production')
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--pretty', action='store_true', help='print human-friendly table')
+parser.add_argument('--prometheus', help='send metrics to given prometheus pushgateway')
 args=parser.parse_args()
 DEBUG=args.debug
-main(args.queue, args.pretty)
+main(args.queue, args.pretty, args.prometheus)

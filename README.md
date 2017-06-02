@@ -10,19 +10,42 @@ Calculate the usage of a Sun Grid Engine / Open Grid Engine queue using h_vmem a
 ## Usage
 
 ```
-usage: queue_use.py [-h] [--debug] queue
+usage: queue_use.py [-h] [--debug] [--pretty] [--prometheus PROMETHEUS] queue
 
 Calculate current queue usage
 
 positional arguments:
-  queue       the queue to calculate for
+  queue                 the queue to calculate for
 
 optional arguments:
-  -h, --help  show this help message and exit
+  -h, --help            show this help message and exit
   --debug
+  --pretty              print human-friendly table
+  --prometheus PROMETHEUS
+                        send metrics to given prometheus pushgateway
 ```
 
+## Testing
+
+### Prometheus
+
+To test, start a local [Prometheus Pushgateway](https://github.com/prometheus/pushgateway).
+
+```
+# Start the local pushgateway using Docker
+docker pull prom/pushgateway
+docker run -d -p 9090:9091 prom/pushgateway
+
+# Send stats to the pushgateway
+python sge_usage.py --prometheus localhost:9090 production
+```
+
+Check http://localhost:9090 to see the metrics appearing.
+
+
 ## Output format
+
+### Pretty Print
 
 Output goes to standard out, tab-separated with a header:
 
@@ -32,6 +55,23 @@ Output goes to standard out, tab-separated with a header:
 * Total (G) : the total amount of memory available for nodes of this size
 * Used (G) : the total amount of memory being used on nodes of this size
 * Efficiency (%) : the amount of memory being used as a percentage of the total amount of requested memory
+
+### Prometheus Pushgateway
+
+Three metrics are sent to the Prometheus Pushgateway:
+
+* sgequeue_hvmem: The current requested virtual memory (bytes) used on the given queue
+* sgequeue_maxvmem: The current maximum virtual memory (bytes) used on the given queue
+* sgequeue_memtotal: The current maximum virtual memory (bytes) available on the given queue
+
+Each has attributes:
+
+* job: queue name
+* nodesize: size of the node in GB
+
+
+
+
 
 ## License
 
