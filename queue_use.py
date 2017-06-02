@@ -12,8 +12,8 @@ DEBUG=0
 # how hoggy our processes are being (requested vs actual)
 
 def main(queue, pretty, prometheus):
-    qstat=parse_qstat()
-    qh = parse_qhost()
+    qstat=store_qstat()
+    qh=parse_qhost()
     machine_size={}
     total_hvmem=0
     total_memtotal=0
@@ -80,30 +80,13 @@ def safe_div(num, denom):
     else:
         return 0
 
-def parse_qhost():
-    qh_file="qhosts.xml"
-    if not DEBUG:
-        import tempfile,subprocess
-        tmpfile=tempfile.NamedTemporaryFile()
-        subprocess.call(['qhost','-xml','-q','-j','-F'], stdout=tmpfile)
-        qh_file=tmpfile.name
-    return ET.parse(qh_file)
-
-
-
-def parse_qstat():
+def store_qstat():
 # Parsing the qstat XML log because I don't want to have to iterate
 # through the file for every job mentioned in the qhost file.
 # Returns: a dict with job ID keys. Each value holds another dict with the
 #   keys: 'h_vmem' and 'maxvmem', for requested and used memory
 #   respectively
-    qs_file='qstat.xml'
-    if not DEBUG:
-        import tempfile,subprocess
-        tmpfile=tempfile.NamedTemporaryFile()
-        subprocess.call(['qstat','-u','*','-j','*','-xml'],stdout=tmpfile)
-        qs_file=tmpfile.name
-    qs = ET.parse(qs_file)
+    qs = parse_qstat()
     qstat = {}
     for element in qs.getroot().iter('element'):
         jobstat={}
@@ -124,6 +107,24 @@ def parse_qstat():
                 jobstat[key.text]=scaled.find('UA_value').text
         qstat[jid]=jobstat
     return qstat
+
+
+def parse_qhost():
+    return call_and_parse_xml(['qhost','-xml','-q','-j','-F'],"qhosts.xml")
+
+def parse_qstat():
+    return call_and_parse_xml(['qstat','-u','*','-j','*','-xml'],"qstat.xml")
+
+
+def call_and_parse_xml(command_arr,fallback_file):
+    filename=fallback_file
+    if not DEBUG:
+        import tempfile,subprocess
+        tmpfile=tempfile.NamedTemporaryFile()
+        subprocess.call(command_arr,stdout=tmpfile)
+        filename=tmpfile.name
+    return ET.parse(filename)
+
 
 def convert_mem(string):
 # Convert strings like 10G and 200M to bytes. Also converts "-" to 0.
