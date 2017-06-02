@@ -15,9 +15,7 @@ def main(queue, pretty, prometheus):
     qstat=store_qstat()
     qh=parse_qhost()
     machine_size={}
-    total_hvmem=0
-    total_memtotal=0
-    total_maxvmem=0
+    totals={'hvmem':0,'memtotal':0,'maxvmem':0}
     for host in qh.getroot():
         for q in host.iter('queue'):
             if q.attrib['name'] == queue:
@@ -25,16 +23,16 @@ def main(queue, pretty, prometheus):
                 hvmem=row['h_vmem']
                 memtotal=row['mem_total']
                 maxvmem=row['maxvmem']
-                total_hvmem+=hvmem
-                total_memtotal+=memtotal
-                total_maxvmem+=maxvmem
+                totals['hvmem']+=hvmem
+                totals['memtotal']+=memtotal
+                totals['maxvmem']+=maxvmem
                 if not memtotal in machine_size:
                     machine_size[memtotal]={'h_vmem':0, 'mem_total':0, 'maxvmem':0}
                 machine_size[memtotal]['h_vmem']+=hvmem
                 machine_size[memtotal]['mem_total']+=memtotal
                 machine_size[memtotal]['maxvmem']+=maxvmem
     if pretty:
-        pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem)
+        pretty_print(machine_size,totals)
     if prometheus is not None:
         send_to_prometheus(queue,machine_size,prometheus)
 
@@ -55,7 +53,7 @@ def send_to_prometheus(queue,machine_size,prometheus):
     push_to_gateway(prometheus, job=queue, registry=registry)
 
 
-def pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem):
+def pretty_print(machine_size,totals):
         print "{0:<20s}{1:<20s}{2:<20s}{3:<20s}{4:<20s}{5:<20s}".format("Node Size (G)","Busy-ness (%)","Requested (G)","Total (G)","Used (G)","Efficiency (%)")
         for size in machine_size:
                 sizerow=machine_size[size]
@@ -67,9 +65,9 @@ def pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem):
                 efficiency=(100*safe_div(usedg,requestedg))
                 print "{0:<20s}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:<20.2f}{5:<20.2f}".format(nodesize,busyness,requestedg,totalg,usedg,efficiency)
 
-        total_busyness=(100.0*safe_div(total_hvmem,total_memtotal))
-        total_efficiency=(100.0*safe_div(total_maxvmem,total_hvmem))
-        print "{5:<20s}{0:<20.2f}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:20.2f}".format(total_busyness,get_gigs(total_hvmem),get_gigs(total_memtotal),get_gigs(total_maxvmem),total_efficiency,"Total")
+        total_busyness=(100.0*safe_div(totals['hvmem'],totals['memtotal']))
+        total_efficiency=(100.0*safe_div(totals['maxvmem'],totals['hvmem']))
+        print "{5:<20s}{0:<20.2f}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:20.2f}".format(total_busyness,get_gigs(totals['hvmem']),get_gigs(totals['memtotal']),get_gigs(totals['maxvmem']),total_efficiency,"Total")
 
 
 
