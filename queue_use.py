@@ -3,7 +3,7 @@ try:
     import xml.etree.cElementTree as ET
 except ImportError:
     import xml.etree.ElementTree as ET
-import os
+
 DEBUG=0
 
 # What do I want?
@@ -13,12 +13,7 @@ DEBUG=0
 
 def main(queue, pretty, prometheus):
     qstat=parse_qstat()
-    if DEBUG:
-        print "Loading qhosts.xml file (using file in cwd)"
-    else:
-        os.system(" ".join(["qhost","-xml","-q","-j","-F",">qhosts.xml"]))
-    qh = ET.parse("qhosts.xml")
-    table=[]
+    qh = parse_qhost()
     machine_size={}
     total_hvmem=0
     total_memtotal=0
@@ -26,7 +21,7 @@ def main(queue, pretty, prometheus):
     for host in qh.getroot():
         for q in host.iter('queue'):
             if q.attrib['name'] == queue:
-                row=collect_stats(host, qstat)
+                row=collect_stats(host, qstat, queue)
                 hvmem=row['h_vmem']
                 memtotal=row['mem_total']
                 maxvmem=row['maxvmem']
@@ -38,7 +33,6 @@ def main(queue, pretty, prometheus):
                 machine_size[memtotal]['h_vmem']+=hvmem
                 machine_size[memtotal]['mem_total']+=memtotal
                 machine_size[memtotal]['maxvmem']+=maxvmem
-                table.append(row)
     if pretty:
         pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem)
     if prometheus is not None:
@@ -86,17 +80,30 @@ def safe_div(num, denom):
     else:
         return 0
 
+def parse_qhost():
+    qh_file="qhosts.xml"
+    if not DEBUG:
+        import tempfile,subprocess
+        tmpfile=tempfile.NamedTemporaryFile()
+        subprocess.call(['qhost','-xml','-q','-j','-F'], stdout=tmpfile)
+        qh_file=tmpfile.name
+    return ET.parse(qh_file)
+
+
+
 def parse_qstat():
 # Parsing the qstat XML log because I don't want to have to iterate
 # through the file for every job mentioned in the qhost file.
 # Returns: a dict with job ID keys. Each value holds another dict with the
 #   keys: 'h_vmem' and 'maxvmem', for requested and used memory
 #   respectively
-    if DEBUG:
-        print "Parsing qstat.xml file (using file in cwd)"
-    else:
-        os.system(" ".join(["qstat","-u \*","-j \*","-xml", ">qstat.xml"]))
-    qs = ET.parse('qstat.xml')
+    qs_file='qstat.xml'
+    if not DEBUG:
+        import tempfile,subprocess
+        tmpfile=tempfile.NamedTemporaryFile()
+        subprocess.call(['qstat','-u','*','-j','*','-xml'],stdout=tmpfile)
+        qs_file=tmpfile.name
+    qs = ET.parse(qs_file)
     qstat = {}
     for element in qs.getroot().iter('element'):
         jobstat={}
@@ -136,7 +143,7 @@ def get_gigs(string):
 # Also too lazy to remember what to divide by to convert bytes back into gigs
     return float(string)/10**11
 
-def collect_stats(ele, qstat):
+def collect_stats(ele, qstat,queue):
 # for a node in the queue that matches the requested queue, pull out interesting things 
 # also cross-reference the jobs that we pulled out of qstat in that handy dict we made
 # to come up with total requested, used, and available resources on a particular node
@@ -155,6 +162,11 @@ def collect_stats(ele, qstat):
     used=0.0
     for job in ele.findall('job'):
         jid=job.attrib['name']
+        #skip jobs not belonging to current queue
+        for jobvalue in job.findall('jobvalue'):
+            if jobvalue.attrib['name']=='qinstance_name' and not queue in jobvalue.text:
+                continue
+
         for jv in job.iter('jobvalue'):
             if jv.attrib['name'] in jobvalues:
                 row[jv.attrib['name']]=jv.text
