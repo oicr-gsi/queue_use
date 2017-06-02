@@ -14,8 +14,15 @@ DEBUG=0
 def main(queue, pretty, prometheus):
     qstat=store_qstat()
     qh=parse_qhost()
+    nodesize=aggregate_by_nodesize(qh,qstat,queue)
+    if pretty:
+        pretty_print(nodesize)
+    if prometheus is not None:
+        send_to_prometheus(queue,nodesize,prometheus)
+
+
+def aggregate_by_nodesize(qh,qstat,queue):
     machine_size={}
-    totals={'hvmem':0,'memtotal':0,'maxvmem':0}
     for host in qh.getroot():
         for q in host.iter('queue'):
             if q.attrib['name'] == queue:
@@ -23,18 +30,53 @@ def main(queue, pretty, prometheus):
                 hvmem=row['h_vmem']
                 memtotal=row['mem_total']
                 maxvmem=row['maxvmem']
-                totals['hvmem']+=hvmem
-                totals['memtotal']+=memtotal
-                totals['maxvmem']+=maxvmem
                 if not memtotal in machine_size:
                     machine_size[memtotal]={'h_vmem':0, 'mem_total':0, 'maxvmem':0}
                 machine_size[memtotal]['h_vmem']+=hvmem
                 machine_size[memtotal]['mem_total']+=memtotal
                 machine_size[memtotal]['maxvmem']+=maxvmem
-    if pretty:
-        pretty_print(machine_size,totals)
-    if prometheus is not None:
-        send_to_prometheus(queue,machine_size,prometheus)
+    return machine_size
+
+def collect_stats(ele, qstat,queue):
+# for a node in the queue that matches the requested queue, pull out interesting things 
+# also cross-reference the jobs that we pulled out of qstat in that handy dict we made
+# to come up with total requested, used, and available resources on a particular node
+# for this queue
+# Returns: a dict with the keys:host, mem_used, mem_total, num_proc, load_avg, h_vmem, and maxvmem
+    hostvalues=['mem_used', 'mem_total', 'num_proc', 'load_avg']
+    jobvalues=[]
+
+    row={}
+    row['host']=ele.attrib['name']
+    # pretty sure these all exist
+    for hostvalue in ele.iter('hostvalue'):
+        if hostvalue.attrib['name'] in hostvalues:
+            row[hostvalue.attrib['name']]=convert_mem(hostvalue.text)
+    req=0.0
+    used=0.0
+    for job in ele.findall('job'):
+        jid=job.attrib['name']
+        #skip jobs not belonging to current queue
+        for jobvalue in job.findall('jobvalue'):
+            if jobvalue.attrib['name']=='qinstance_name' and not queue in jobvalue.text:
+                continue
+
+        for jv in job.iter('jobvalue'):
+            if jv.attrib['name'] in jobvalues:
+                row[jv.attrib['name']]=jv.text
+        if jid in qstat:
+            mem=qstat[jid]
+            if 'h_vmem' in mem:
+                req+=float(mem['h_vmem'])
+            if 'maxvmem' in mem:
+                used+=float(mem['maxvmem'])
+    row['h_vmem']=req
+    row['maxvmem']=used
+    qhost_use=0
+    qstat_use=0
+    row['qhost_use']=safe_div(float(row['maxvmem']), float(row['h_vmem']))
+    row['qstat_use']=safe_div(float(row['mem_used']), float(row['mem_total']))
+    return row
 
 def send_to_prometheus(queue,machine_size,prometheus):
     from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
@@ -53,8 +95,9 @@ def send_to_prometheus(queue,machine_size,prometheus):
     push_to_gateway(prometheus, job=queue, registry=registry)
 
 
-def pretty_print(machine_size,totals):
+def pretty_print(machine_size):
         print "{0:<20s}{1:<20s}{2:<20s}{3:<20s}{4:<20s}{5:<20s}".format("Node Size (G)","Busy-ness (%)","Requested (G)","Total (G)","Used (G)","Efficiency (%)")
+        totals={'hvmem':0,'memtotal':0,'maxvmem':0}
         for size in machine_size:
                 sizerow=machine_size[size]
                 nodesize=str(get_gigs(size))
@@ -63,20 +106,14 @@ def pretty_print(machine_size,totals):
                 totalg=get_gigs(sizerow['mem_total'])
                 usedg=get_gigs(sizerow['maxvmem'])
                 efficiency=(100*safe_div(usedg,requestedg))
+                totals['hvmem']+=requestedg
+                totals['memtotal']+=totalg
+                totals['maxvmem']+=usedg
                 print "{0:<20s}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:<20.2f}{5:<20.2f}".format(nodesize,busyness,requestedg,totalg,usedg,efficiency)
 
         total_busyness=(100.0*safe_div(totals['hvmem'],totals['memtotal']))
         total_efficiency=(100.0*safe_div(totals['maxvmem'],totals['hvmem']))
-        print "{5:<20s}{0:<20.2f}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:20.2f}".format(total_busyness,get_gigs(totals['hvmem']),get_gigs(totals['memtotal']),get_gigs(totals['maxvmem']),total_efficiency,"Total")
-
-
-
-def safe_div(num, denom):
-# Because I'm too lazy to check for a 0 denominator every time I divide
-    if denom != 0:
-        return num/denom
-    else:
-        return 0
+        print "{5:<20s}{0:<20.2f}{1:<20.2f}{2:<20.2f}{3:<20.2f}{4:20.2f}".format(total_busyness,totals['hvmem'],totals['memtotal'],totals['maxvmem'],total_efficiency,"Total")
 
 def store_qstat():
 # Parsing the qstat XML log because I don't want to have to iterate
@@ -142,57 +179,24 @@ def get_gigs(string):
 # Also too lazy to remember what to divide by to convert bytes back into gigs
     return float(string)/10**11
 
-def collect_stats(ele, qstat,queue):
-# for a node in the queue that matches the requested queue, pull out interesting things 
-# also cross-reference the jobs that we pulled out of qstat in that handy dict we made
-# to come up with total requested, used, and available resources on a particular node
-# for this queue
-# Returns: a dict with the keys:host, mem_used, mem_total, num_proc, load_avg, h_vmem, and maxvmem
-    hostvalues=['mem_used', 'mem_total', 'num_proc', 'load_avg']
-    jobvalues=[]
+def safe_div(num, denom):
+# Because I'm too lazy to check for a 0 denominator every time I divide
+    if denom != 0:
+        return num/denom
+    else:
+        return 0
 
-    row={}
-    row['host']=ele.attrib['name']
-    # pretty sure these all exist
-    for hostvalue in ele.iter('hostvalue'):
-        if hostvalue.attrib['name'] in hostvalues:
-            row[hostvalue.attrib['name']]=convert_mem(hostvalue.text)
-    req=0.0
-    used=0.0
-    for job in ele.findall('job'):
-        jid=job.attrib['name']
-        #skip jobs not belonging to current queue
-        for jobvalue in job.findall('jobvalue'):
-            if jobvalue.attrib['name']=='qinstance_name' and not queue in jobvalue.text:
-                continue
-
-        for jv in job.iter('jobvalue'):
-            if jv.attrib['name'] in jobvalues:
-                row[jv.attrib['name']]=jv.text
-        if jid in qstat:
-            mem=qstat[jid]
-            if 'h_vmem' in mem:
-                req+=float(mem['h_vmem'])
-            if 'maxvmem' in mem:
-                used+=float(mem['maxvmem'])
-    row['h_vmem']=req
-    row['maxvmem']=used
-    qhost_use=0
-    qstat_use=0
-    row['qhost_use']=safe_div(float(row['maxvmem']), float(row['h_vmem']))
-    row['qstat_use']=safe_div(float(row['mem_used']), float(row['mem_total']))
-    return row
-
-
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Calculate current queue usage')
+    parser.add_argument('queue', help='the queue to calculate for', default='production')
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--pretty', action='store_true', help='print human-friendly table')
+    parser.add_argument('--prometheus', help='send metrics to given prometheus pushgateway')
+    args=parser.parse_args()
+    return args
 
 # Parse the args and call main
-import sys
-import argparse
-parser = argparse.ArgumentParser(description='Calculate current queue usage')
-parser.add_argument('queue', help='the queue to calculate for', default='production')
-parser.add_argument('--debug', action='store_true')
-parser.add_argument('--pretty', action='store_true', help='print human-friendly table')
-parser.add_argument('--prometheus', help='send metrics to given prometheus pushgateway')
-args=parser.parse_args()
+args=parse_args()
 DEBUG=args.debug
 main(args.queue, args.pretty, args.prometheus)
