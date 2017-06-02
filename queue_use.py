@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 try:
-	import xml.etree.cElementTree as ET
+    import xml.etree.cElementTree as ET
 except ImportError:
-	import xml.etree.ElementTree as ET
+    import xml.etree.ElementTree as ET
 import os
 DEBUG=0
 
@@ -81,96 +81,96 @@ def pretty_print(machine_size,total_hvmem,total_memtotal,total_maxvmem):
 
 def safe_div(num, denom):
 # Because I'm too lazy to check for a 0 denominator every time I divide
-	if denom != 0:
-		return num/denom
-	else:
-		return 0
+    if denom != 0:
+        return num/denom
+    else:
+        return 0
 
 def parse_qstat():
 # Parsing the qstat XML log because I don't want to have to iterate
 # through the file for every job mentioned in the qhost file.
 # Returns: a dict with job ID keys. Each value holds another dict with the
-# 	keys: 'h_vmem' and 'maxvmem', for requested and used memory
-#	respectively
-	if DEBUG:
-		print "Parsing qstat.xml file (using file in cwd)"
-	else:
-		os.system(" ".join(["qstat","-u \*","-j \*","-xml", ">qstat.xml"]))
-	qs = ET.parse('qstat.xml')
-	qstat = {}
-	for element in qs.getroot().iter('element'):
-		jobstat={}
-		# record the job ID, if it exists. If not, skip it
-		key=element.find('JB_job_number')
-		if key is None:
-			continue
-		jid=key.text
-		# record the requested memory (h_vmem)
-		for qreq in element.iter('qstat_l_requests'):
-			key=qreq.find('CE_name')
-			if key.text == 'h_vmem':
-				jobstat[key.text]=qreq.find('CE_doubleval').text
-		# record current maximum usage (maxvmem)
-		for scaled in element.iter('scaled'):
-			key=scaled.find('UA_name')
-			if key.text == 'maxvmem' or key.text == 'io':
-				jobstat[key.text]=scaled.find('UA_value').text
-		qstat[jid]=jobstat
-	return qstat
+#   keys: 'h_vmem' and 'maxvmem', for requested and used memory
+#   respectively
+    if DEBUG:
+        print "Parsing qstat.xml file (using file in cwd)"
+    else:
+        os.system(" ".join(["qstat","-u \*","-j \*","-xml", ">qstat.xml"]))
+    qs = ET.parse('qstat.xml')
+    qstat = {}
+    for element in qs.getroot().iter('element'):
+        jobstat={}
+        # record the job ID, if it exists. If not, skip it
+        key=element.find('JB_job_number')
+        if key is None:
+            continue
+        jid=key.text
+        # record the requested memory (h_vmem)
+        for qreq in element.iter('qstat_l_requests'):
+            key=qreq.find('CE_name')
+            if key.text == 'h_vmem':
+                jobstat[key.text]=qreq.find('CE_doubleval').text
+        # record current maximum usage (maxvmem)
+        for scaled in element.iter('scaled'):
+            key=scaled.find('UA_name')
+            if key.text == 'maxvmem' or key.text == 'io':
+                jobstat[key.text]=scaled.find('UA_value').text
+        qstat[jid]=jobstat
+    return qstat
 
 def convert_mem(string):
 # Convert strings like 10G and 200M to bytes. Also converts "-" to 0.
-	num=0.0
-	if 'G' in string:
-		fixed_str=string.replace("G","")
-		num=float(fixed_str)*10**(11)
-	else:
-		if 'M' in string:
-			fixed_str=string.replace("M","")
-			num=float(fixed_str)*10**(8)
-	if num!=0.0 or string=='-':
-		return num
-	return string
+    num=0.0
+    if 'G' in string:
+        fixed_str=string.replace("G","")
+        num=float(fixed_str)*10**(11)
+    else:
+        if 'M' in string:
+            fixed_str=string.replace("M","")
+            num=float(fixed_str)*10**(8)
+    if num!=0.0 or string=='-':
+        return num
+    return string
 
 def get_gigs(string):
 # Also too lazy to remember what to divide by to convert bytes back into gigs
-	return float(string)/10**11
+    return float(string)/10**11
 
 def collect_stats(ele, qstat):
-# for a node in the queue that matches the requested queue, pull out interesting things	
+# for a node in the queue that matches the requested queue, pull out interesting things 
 # also cross-reference the jobs that we pulled out of qstat in that handy dict we made
 # to come up with total requested, used, and available resources on a particular node
 # for this queue
 # Returns: a dict with the keys:host, mem_used, mem_total, num_proc, load_avg, h_vmem, and maxvmem
-	hostvalues=['mem_used', 'mem_total', 'num_proc', 'load_avg']
-	jobvalues=[]
+    hostvalues=['mem_used', 'mem_total', 'num_proc', 'load_avg']
+    jobvalues=[]
 
-	row={}
-	row['host']=ele.attrib['name']
-	# pretty sure these all exist
-	for hostvalue in ele.iter('hostvalue'):
-		if hostvalue.attrib['name'] in hostvalues:
-			row[hostvalue.attrib['name']]=convert_mem(hostvalue.text)
-	req=0.0
-	used=0.0
-	for job in ele.findall('job'):
-		jid=job.attrib['name']
-		for jv in job.iter('jobvalue'):
-			if jv.attrib['name'] in jobvalues:
-				row[jv.attrib['name']]=jv.text
-		if jid in qstat:
-			mem=qstat[jid]
-			if 'h_vmem' in mem:
-				req+=float(mem['h_vmem'])
-			if 'maxvmem' in mem:
-				used+=float(mem['maxvmem'])
-	row['h_vmem']=req
-	row['maxvmem']=used
-	qhost_use=0
-	qstat_use=0
-	row['qhost_use']=safe_div(float(row['maxvmem']), float(row['h_vmem']))
-	row['qstat_use']=safe_div(float(row['mem_used']), float(row['mem_total']))
-	return row
+    row={}
+    row['host']=ele.attrib['name']
+    # pretty sure these all exist
+    for hostvalue in ele.iter('hostvalue'):
+        if hostvalue.attrib['name'] in hostvalues:
+            row[hostvalue.attrib['name']]=convert_mem(hostvalue.text)
+    req=0.0
+    used=0.0
+    for job in ele.findall('job'):
+        jid=job.attrib['name']
+        for jv in job.iter('jobvalue'):
+            if jv.attrib['name'] in jobvalues:
+                row[jv.attrib['name']]=jv.text
+        if jid in qstat:
+            mem=qstat[jid]
+            if 'h_vmem' in mem:
+                req+=float(mem['h_vmem'])
+            if 'maxvmem' in mem:
+                used+=float(mem['maxvmem'])
+    row['h_vmem']=req
+    row['maxvmem']=used
+    qhost_use=0
+    qstat_use=0
+    row['qhost_use']=safe_div(float(row['maxvmem']), float(row['h_vmem']))
+    row['qstat_use']=safe_div(float(row['mem_used']), float(row['mem_total']))
+    return row
 
 
 
