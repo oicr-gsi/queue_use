@@ -1,11 +1,11 @@
-# SGE Usage Calculator
+# SGE Queue Usage Calculator
 
 Calculate the usage of a Sun Grid Engine / Open Grid Engine queue using h_vmem and maxvmem from qhost and qstat.
 
 ## Requirements
 
 * Python 2.7 with [prometheus_client](https://github.com/prometheus/client_python) installed
-* The script depends on a system call out to qstat and qhost
+* Depends on a system call out to qstat and qhost
 
 ## Usage
 
@@ -52,7 +52,7 @@ docker pull prom/pushgateway
 docker run -d -p 9090:9091 prom/pushgateway
 
 # Send stats to the pushgateway
-python sge_usage.py --prometheus localhost:9090 production
+python sge_usage.py --prometheus localhost:9090 --debug production
 ```
 
 Check http://localhost:9090 to see the metrics appearing.
@@ -75,9 +75,9 @@ Output goes to standard out, tab-separated with a header:
 
 Three metrics are sent to the Prometheus Pushgateway:
 
-* sgequeue_hvmem: The current requested virtual memory (bytes) used on the given queue
-* sgequeue_maxvmem: The current maximum virtual memory (bytes) used on the given queue
-* sgequeue_memtotal: The current maximum virtual memory (bytes) available on the given queue
+* queue_use_hvmem: The current requested virtual memory (bytes) used on the given queue
+* queue_use_maxvmem: The current maximum virtual memory (bytes) used on the given queue
+* queue_use_memtotal: The current maximum virtual memory (bytes) available on the given queue
 
 Each has attributes:
 

@@ -81,9 +81,9 @@ def collect_stats(ele, qstat,queue):
 def send_to_prometheus(queue,machine_size,prometheus):
     from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
     registry = CollectorRegistry()
-    g_maxvmem = Gauge('sgequeue_maxvmem', 'The current maximum virtual memory (bytes) used on the given queue', ['nodesize'], registry=registry)
-    g_hvmem = Gauge('sgequeue_hvmem', 'The current requested virtual memory (bytes) used on the given queue', ['nodesize'], registry=registry)
-    g_memtotal = Gauge('sgequeue_memtotal', 'The current maximum virtual memory (bytes) available on the given queue', ['nodesize'], registry=registry)
+    g_maxvmem = Gauge('queue_use_maxvmem', 'The current maximum virtual memory (bytes) used on the given queue', ['nodesize'], registry=registry)
+    g_hvmem = Gauge('queue_use_hvmem', 'The current requested virtual memory (bytes) used on the given queue', ['nodesize'], registry=registry)
+    g_memtotal = Gauge('queue_use_memtotal', 'The current maximum virtual memory (bytes) available on the given queue', ['nodesize'], registry=registry)
    
     for size in machine_size:
         sizerow=machine_size[size]
