@@ -4,7 +4,7 @@ Calculate the usage of a Sun Grid Engine / Open Grid Engine queue using h_vmem a
 
 ## Requirements
 
-* Python 2.7
+* Python 2.7 with [prometheus_client](https://github.com/prometheus/client_python) installed
 * The script depends on a system call out to qstat and qhost
 
 ## Usage
@@ -26,6 +26,21 @@ optional arguments:
 ```
 
 ## Testing
+
+Generate your own testing files on your SGE install and then use the --debug
+flag. Debug relies on the presence of the files qstat.xml and qhosts.xml in the
+current working directory.
+
+```
+qstat -u \* -j \* -xml > qstat.xml
+qhost -xml -q -j -F > qhosts.xml
+```
+
+### Pretty Print 
+
+```
+python sge_usage.py --pretty --debug production
+```
 
 ### Prometheus
 
