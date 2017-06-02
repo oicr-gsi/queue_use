@@ -5,13 +5,14 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 DEBUG=0
-
+VERSION='0.1'
 # What do I want?
 # How busy the queue is as a whole (requested h_vmem/total available mem)
 # How busy particular machine sizes are (16G, 24G, 125.1, 252.3, 220.8)
 # how hoggy our processes are being (requested vs actual)
 
 def main(queue, pretty, prometheus):
+    print "queue_use version {0:s} for queue '{1:s}'".format(VERSION, queue)
     qstat=store_qstat()
     qh=parse_qhost()
     nodesize=aggregate_by_nodesize(qh,qstat,queue)
