@@ -10,7 +10,7 @@ Calculate the usage of a Sun Grid Engine / Open Grid Engine queue using h_vmem a
 ## Usage
 
 ```
-usage: queue_use.py [-h] [--debug] [--pretty] [--prometheus PROMETHEUS] queue
+usage: queue_use [-h] [--debug] [--pretty] [--prometheus PROMETHEUS] queue
 
 Calculate current queue usage
 
@@ -23,6 +23,8 @@ optional arguments:
   --pretty              print human-friendly table
   --prometheus PROMETHEUS
                         send metrics to given prometheus pushgateway
+
+For more information see: https://github.com/oicr-gsi/queue_use
 ```
 
 ## Testing

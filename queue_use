@@ -189,7 +189,8 @@ def safe_div(num, denom):
 
 def parse_args():
     import argparse
-    parser = argparse.ArgumentParser(description='Calculate current queue usage')
+    parser = argparse.ArgumentParser(description='Calculate current queue usage',
+                                     epilog='For more information see: https://github.com/oicr-gsi/queue_use')
     parser.add_argument('queue', help='the queue to calculate for', default='production')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--pretty', action='store_true', help='print human-friendly table')
