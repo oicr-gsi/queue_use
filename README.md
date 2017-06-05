@@ -5,7 +5,7 @@ Calculate the usage of a Sun Grid Engine / Open Grid Engine queue using h_vmem a
 ## Requirements
 
 * Python 2.7 with [prometheus_client](https://github.com/prometheus/client_python) installed
-* Depends on a system call out to qstat and qhost
+* Depends on system calls out to qstat, qhost, and iconv (to remove non utf-8 characters)
 
 ## Usage
 
@@ -34,8 +34,8 @@ flag. Debug relies on the presence of the files qstat.xml and qhosts.xml in the
 current working directory.
 
 ```
-qstat -u \* -j \* -xml > qstat.xml
-qhost -xml -q -j -F > qhosts.xml
+qstat -u \* -j \* -xml | iconv -c -t 'utf-8' -o qstat.xml 
+qhost -xml -q -j -F | iconv -c -t 'utf-8' -o qhosts.xml
 ```
 
 ### Pretty Print 
@@ -67,10 +67,10 @@ Check http://localhost:9090 to see the metrics appearing.
 Output goes to standard out, tab-separated with a header:
 
 * Node Size (G): the size of each node in gigabytes (or "Total" for a sum of all nodes)
-* Busy-ness (%): How much memory has been requested or reserved as a percentage of the total amount of memory available (0-100)
 * Requested (G): the total amount of memory requested for nodes of this size
-* Total (G) : the total amount of memory available for nodes of this size
 * Used (G) : the total amount of memory being used on nodes of this size
+* Total (G) : the total amount of memory available for nodes of this size
+* Busy-ness (%): How much memory has been requested or reserved as a percentage of the total amount of memory available (0-100)
 * Efficiency (%) : the amount of memory being used as a percentage of the total amount of requested memory
 
 ### Prometheus Pushgateway
