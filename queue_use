@@ -158,7 +158,8 @@ def call_and_parse_xml(command_arr,fallback_file):
         import tempfile,subprocess
         tmpfile=tempfile.NamedTemporaryFile()
         ps=subprocess.Popen(command_arr,stdout=subprocess.PIPE)
-        filename=subprocess.call(('iconv','-c', '-t', 'utf-8', '-'), stdin=ps.stdout, stdout=tmpfile)
+        #remove control characters
+        filename=subprocess.call(('sed', 's/[\x01-\x1F\x7F]//g'), stdin=ps.stdout, stdout=tmpfile)
         ps.wait()
         filename=tmpfile.name
     return ET.parse(filename,parser=ET.XMLParser(encoding='utf-8'))
